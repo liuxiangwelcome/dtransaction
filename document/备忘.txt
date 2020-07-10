@@ -1,0 +1,33 @@
+事务操作DB：（执行成功，提交成功）
+次数      步骤
+1		doBefore/initDTX
+1		doBefore/createStep
+1		doAfterReturning/updateStepStatus
+1		confirmDTX/updateMainSuccess
+1		confirmAll/queryStepBySession
+1*N		confirmAll/submitConfirm/updateStep
+1		confirmAll/updateMain
+
+事务操作DB：（执行失败，回滚成功）
+次数      步骤
+1		doBefore/initDTX
+1		doBefore/createStep
+1		doThrows/updateStepStatus
+1		rollbackDTX/updateMainSuccess
+1		rollbackAll/queryStepBySession
+1*N		rollbackAll/submitRollback/updateStep
+1		rollbackAll/updateMain
+
+事务操作DB：（执行成功，提交失败，回滚成功）
+次数      步骤
+1		doBefore/initDTX
+1		doBefore/createStep
+1		doAfterReturning/updateStepStatus
+1		confirmDTX/updateMainSuccess
+1		confirmAll/queryStepBySession
+1*N		confirmAll/submitConfirm/updateStep
+1		doThrows/updateStepStatus
+1		rollbackDTX/updateMainSuccess
+1		rollbackAll/queryStepBySession
+1*N		rollbackAll/submitRollback/updateStep
+1		rollbackAll/updateMain

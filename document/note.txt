@@ -1,0 +1,82 @@
+关于@DTransaction
+    1.在哪里使用？如何使用？
+        该注解使用类上；同时还要实现 IDTransation 接口；
+    2.ROLLBACK_STRATEGY功能是什么？
+        称之为回滚策略，有两种方式：
+            中断回滚：Interrupt，默认方式，一单遇到回滚失败，则中止其他事务的回滚，退出程序；
+            尽全力回滚：TryBest，有回滚失败，但是会尽全力回滚其他事务；
+
+
+关于分布式事务支持哪些场景
+    1.执行成功--提交成功；
+    2.执行失败--回滚成功/失败；
+    3.执行成功--提交失败--回滚成功/失败；
+    注：回滚失败后必须由人工进行干预，为了减少损失，可设置回滚策略为TryBest，尽可能的回滚所有事务而不会中断；
+
+
+关于分布式事务和业务如何关联
+    1.第1种类方法，通过IDTransation.execute方法的入参进行关联，执行该方法前，系统通过拦截器，将会话ID（sessionId）和子事务步骤ID（stepId）设置到参入IDTransactionHeader对象的DTransactionHeader属性中，
+        业务端通过sessionId和stepId和本业务进行关联，在confirm和rollback操作时，系统会附带这两个属性，可以将它们做confirm和rollback的依据；
+    2.第2种方案，入参自定义业务ID，因为系统会将入参存到数据库中，每次调用都会加载并提供给业务端；
+    3.关于IDTransactionResponse响应对象，系统暂时未要求必须返回有值的对象，可为空；
+
+关于嵌套事务
+    1.是否支持嵌套事务？
+        支持
+    2.嵌套事务如何提交？
+        按子叶优先提交，左边叶子优先提交原则；
+    3.嵌套事务如何回滚？
+        按子叶优先提交，左边叶子优先提交原则；
+
+
+关于提交和回滚
+    1.如何配置重试策略？
+        配置类DTransactionProperties中定义了stepRetrySize和stepRetrySleepTime两个参数，控制提交和回滚的重试策略；
+        stepRetrySize：重试次数，默认3次；
+        stepRetrySleepTime：重试间隔时间，默认休眠100毫秒；
+    2.哪种状态可以提交？
+        配置类DTransactionProperties中定义了allowConfirmStepStatus参数，规定了StepStatus.SUCCEED、StepStatus.CONFIRMFAILED状态才可以允许提交；
+    3.哪种状态可以回滚？
+        配置类DTransactionProperties中定义了allowRollbackStepStatus参数，规定了StepStatus.SUCCEED、StepStatus.CONFIRMDONE、StepStatus.CONFIRMFAILED、StepStatus.ROLLEBACKFAILED状态可以允许回滚；
+    4.提交和回滚的参数是什么？
+        系统在执行execute方法时，将入参格式化为Json存在数据库中，系统调用confirm和rollback时，从数据库中取出参数并反序列化后，设置到confirm和rollback的参数中；
+    5.系统如何判断需要回滚？
+            只有一种方式，通过异常，业务端出现任何不满足的条件，只需要抛出异常即可；
+
+
+关于异常
+    1.系统如何判断需要回滚？
+        只有一种方式，通过异常，业务端出现任何不满足的条件，只需要抛出异常即可；
+    2.客户端调用会出现什么样的异常？
+        以分布式事务支持的场景为例：
+            1.执行成功--提交成功；
+                无异常返回
+            2.执行失败--回滚成功；
+                抛出业务系统的异常；
+            3.执行失败--回滚失败；
+                抛出DTransactionException异常，该异常堆栈包含有调用业务端rollback的异常信息；
+            4.执行成功--提交失败--回滚成功；
+                无异常返回
+            5.执行成功--提交失败--回滚失败；
+                抛出DTransactionException异常，该异常堆栈包含有调用业务端rollback的异常信息；
+
+
+关于事务状态
+    1.全局事务有哪些状态？
+        参考MainStatus枚举类
+            CREATED(1, "新建"),
+            SUCCEED(2, "成功"),
+            FAILED(3, "失败"),
+            CONFIRMDONE(4, "提交完成"),
+            CONFIRMFAILED(5, "提交失败"),
+            ROLLBACKDONE(6, "回滚完成"),
+            ROLLBACKFAILED(7, "回滚失败");
+    2.子事务有哪些状态？
+        参考StepStatus枚举类
+            CREATED(1, "新建"),
+            SUCCEED(2, "成功"),
+            FAILED(3, "失败"),
+            CONFIRMDONE(4, "提交完成"),
+            CONFIRMFAILED(5, "提交失败"),
+            ROLLBACKDONE(6, "回滚完成"),
+            ROLLEBACKFAILED(7, "回滚失败");

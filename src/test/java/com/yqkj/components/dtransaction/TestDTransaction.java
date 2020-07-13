@@ -23,11 +23,8 @@ public class TestDTransaction {
 
     @Test
     public void test001(){
-        /*String result = payBiz.pay("zhangsan", BigDecimal.TEN);
-        System.out.println("----------------result:::" + result);*/
         PayRequest pr = new PayRequest("zhangsan", BigDecimal.TEN, "lisi", 10);
         PayResponse resp = (PayResponse) payBiz.execute(pr);
-        System.out.println("----------------result:::" + resp.getResult());
     }
 
     /**

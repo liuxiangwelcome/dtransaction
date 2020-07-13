@@ -4,14 +4,19 @@ import com.alibaba.fastjson.JSONObject;
 import com.yqkj.components.dtransaction.bean.DTransactionHeader;
 import com.yqkj.components.dtransaction.bean.IDTransactionHeader;
 import com.yqkj.components.dtransaction.bean.StepTree;
+import com.yqkj.components.dtransaction.builds.DTXLogsBuild;
 import com.yqkj.components.dtransaction.builds.DTXMainBuild;
 import com.yqkj.components.dtransaction.builds.DTXStepBuild;
+import com.yqkj.components.dtransaction.builds.LogsContentBuild;
+import com.yqkj.components.dtransaction.dao.DTXLogsDao;
 import com.yqkj.components.dtransaction.dao.DTXMainDao;
 import com.yqkj.components.dtransaction.dao.DTXStepDao;
+import com.yqkj.components.dtransaction.enums.DTXLogsType;
 import com.yqkj.components.dtransaction.enums.MainStatus;
 import com.yqkj.components.dtransaction.enums.RollbackStrategy;
 import com.yqkj.components.dtransaction.enums.StepStatus;
 import com.yqkj.components.dtransaction.exceptions.DTransactionException;
+import com.yqkj.components.dtransaction.pojo.DTXLogs;
 import com.yqkj.components.dtransaction.pojo.DTXMain;
 import com.yqkj.components.dtransaction.pojo.DTXStep;
 import com.yqkj.components.dtransaction.properties.DTransactionProperties;
@@ -47,6 +52,8 @@ public class DefaultDTransactionManager implements IDTransactionManager {
     @Autowired
     private DTXStepDao stepDao;
     @Autowired
+    private DTXLogsDao logsDao;
+    @Autowired
     private DTransactionFactory transactionFactory;
 
     /**
@@ -73,60 +80,96 @@ public class DefaultDTransactionManager implements IDTransactionManager {
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public void createDTX() {
-        DTXMain main = new DTXMainBuild().buildSessionId(getSessionId())
+        DTXMainBuild mainBuild = DTXMainBuild.getInstance().buildSessionId(getSessionId())
                 .buildTime(DateUtil.current(), DateUtil.current(), null)
                 .buildExecuteTimes(DEFAULT_EXECUTE_TIMES)
-                .buildStatus(MainStatus.CREATED)
-                .buildRemakr(null)
-                .build();
-        this.mainDao.save(main);
+                .buildStatus(MainStatus.CREATED);
+        DTXMain main = mainBuild.build();
+        main = this.mainDao.save(main);
+
+        if (transactionProperties.isWriteLogs()) {
+            DTXLogs logs = DTXLogsBuild.getInstance()
+                    .buildCommon(main.getSessionId(), DTXLogsType.Main, main.getId(), mainBuild.getLogsContentBuild().build()).build();
+            this.logsDao.save(logs);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public Long createStep(Long parentStepId, Integer seq, String serviceName, Object requestContent) {
-        DTXStep step = new DTXStepBuild().buildSessionId(getSessionId())
+        DTXStepBuild stepBuild = DTXStepBuild.getInstance().buildSessionId(getSessionId())
                 .buildParentId(parentStepId)
                 .buildStepSeq(seq)
                 .buildStepStatus(StepStatus.CREATED)
                 .buildExecuteTimes(DEFAULT_EXECUTE_TIMES)
                 .buildTime(DateUtil.current(), DateUtil.current())
-                .buildRemark(null)
                 .buildServiceName(serviceName)
                 .buildRequestContentClass(requestContent.getClass().getName())
-                .buildRequestContent(JSONObject.toJSONString(requestContent))
-                .build();
-        return this.stepDao.save(step).getId();
+                .buildRequestContent(JSONObject.toJSONString(requestContent));
+        DTXStep step = stepBuild.build();
+        step = this.stepDao.save(step);
+
+        if (transactionProperties.isWriteLogs()) {
+            String content = stepBuild.getLogsContentBuild().build();
+            DTXLogs logs = DTXLogsBuild.getInstance().buildCommon(step.getSessionId(), DTXLogsType.Step, step.getId(), content).build();
+            this.logsDao.save(logs);
+        }
+
+        return step.getId();
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     @Override
     public void updateStepStatus(Long stepId, StepStatus status, String remark) {
         DTXStep step = this.stepDao.findById(stepId).get();
-        step.setStatus(status);
-        step.setRemark(remark);
-        step.setUpdateTime(DateUtil.current());
+
+        DTXStepBuild stepBuild = DTXStepBuild.getInstance(step);
+        step = stepBuild.buildStepStatus(status).buildRemark(remark).buildUpdateTime(DateUtil.current()).build();
+
         this.stepDao.save(step);
+
+        if (transactionProperties.isWriteLogs()) {
+            String content = stepBuild.getLogsContentBuild().build();
+            DTXLogs logs = DTXLogsBuild.getInstance()
+                    .buildCommon(step.getSessionId(), DTXLogsType.Step, step.getId(), content).build();
+            this.logsDao.save(logs);
+        }
     }
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateMainSuccess(Long sessionId, String remark) {
         DTXMain main = this.mainDao.queryMainBySession(sessionId);
-        main.setStatus(MainStatus.SUCCEED);
-        main.setRemark(remark);
-        main.setUpdateTime(DateUtil.current());
+
+        DTXMainBuild mainBuild = DTXMainBuild.getInstance(main);
+        main = mainBuild.buildStatus(MainStatus.SUCCEED).buildRemark(remark).buildUpdateTime(DateUtil.current()).build();
+
         this.mainDao.save(main);
+
+        if (transactionProperties.isWriteLogs()) {
+            String content = mainBuild.getLogsContentBuild().build();
+            DTXLogs logs = DTXLogsBuild.getInstance()
+                    .buildCommon(main.getSessionId(), DTXLogsType.Main, main.getId(), content).build();
+            this.logsDao.save(logs);
+        }
     }
 
     @Override
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void updateMainFailed(Long sessionId, String remark){
         DTXMain main = this.mainDao.queryMainBySession(sessionId);
-        main.setStatus(MainStatus.FAILED);
-        main.setRemark(remark);
-        main.setUpdateTime(DateUtil.current());
+
+        DTXMainBuild mainBuild = DTXMainBuild.getInstance(main);
+        main = mainBuild.buildStatus(MainStatus.FAILED).buildRemark(remark).buildUpdateTime(DateUtil.current()).build();
+
         this.mainDao.save(main);
+
+        if (transactionProperties.isWriteLogs()) {
+            String content = mainBuild.getLogsContentBuild().build();
+            DTXLogs logs = DTXLogsBuild.getInstance()
+                    .buildCommon(main.getSessionId(), DTXLogsType.Main, main.getId(), content).build();
+            this.logsDao.save(logs);
+        }
     }
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
@@ -158,11 +201,18 @@ public class DefaultDTransactionManager implements IDTransactionManager {
         } finally {
             // 更新全局事务状态
             DTXMain main = this.mainDao.queryMainBySession(this.getSessionId());
-            DTXMainBuild build = new DTXMainBuild(main)
+            DTXMainBuild mainBuild = DTXMainBuild.getInstance(main)
                     .buildConfirmTimes(main.getConfirmTimes() + 1)
                     .buildUpdateTime(DateUtil.current())
                     .buildStatus(result ? MainStatus.CONFIRMDONE : MainStatus.CONFIRMFAILED);
-            this.updateMain(build.build());
+            main = mainBuild.build();
+            this.updateMain(main);
+
+            if (transactionProperties.isWriteLogs()) {
+                String content = mainBuild.getLogsContentBuild().build();
+                DTXLogs logs = DTXLogsBuild.getInstance().buildCommon(main.getSessionId(), DTXLogsType.Main, main.getId(), content).build();
+                this.logsDao.save(logs);
+            }
         }
     }
 
@@ -244,13 +294,17 @@ public class DefaultDTransactionManager implements IDTransactionManager {
             }
         }
 
-        DTXStepBuild stepBuild = new DTXStepBuild(step)
+        DTXStepBuild stepBuild = DTXStepBuild.getInstance(step)
                 .buildConfirmTimes(step.getConfirmTimes() + retry)
                 .buildConfirmTime(DateUtil.current())
                 .buildUpdateTime(DateUtil.current())
                 .buildStepStatus(success ? StepStatus.CONFIRMDONE : StepStatus.CONFIRMFAILED)
                 .buildRemark(remark);
         this.updateStep(stepBuild.build());
+
+        if (this.transactionProperties.isWriteLogs()) {
+            this.logsDao.save(DTXLogsBuild.getInstance().buildCommon(step.getSessionId(), DTXLogsType.Step, step.getId(), stepBuild.getLogsContentBuild().build()).build());
+        }
 
         // 提交不成功，抛出异常，由拦截器获取并调用回滚操作，最终异常返回给调用者
         if (!success) {
@@ -296,11 +350,16 @@ public class DefaultDTransactionManager implements IDTransactionManager {
         } finally {
             // 更新全局事务状态
             DTXMain main = this.mainDao.queryMainBySession(this.getSessionId());
-            DTXMainBuild build = new DTXMainBuild(main)
+            DTXMainBuild mainBuild = DTXMainBuild.getInstance(main)
                     .buildRollbackTimes(main.getRollbackTimes() + 1)
                     .buildUpdateTime(DateUtil.current())
                     .buildStatus(isAllSuccess ? MainStatus.ROLLBACKDONE : MainStatus.ROLLBACKFAILED);
-            this.updateMain(build.build());
+            main = mainBuild.build();
+            this.updateMain(main);
+
+            if (this.transactionProperties.isWriteLogs()) {
+                this.logsDao.save(DTXLogsBuild.getInstance().buildCommon(main.getSessionId(), DTXLogsType.Main, main.getId(), mainBuild.getLogsContentBuild().build()).build());
+            }
         }
     }
 
@@ -393,13 +452,17 @@ public class DefaultDTransactionManager implements IDTransactionManager {
             throwables.add(throwable);
         }
 
-        DTXStepBuild stepBuild = new DTXStepBuild(step)
+        DTXStepBuild stepBuild = DTXStepBuild.getInstance(step)
                 .buildRollbackTimes(step.getRollbackTimes() + retry)
                 .buildRollbackTime(DateUtil.current())
                 .buildUpdateTime(DateUtil.current())
                 .buildStepStatus(success ? StepStatus.ROLLBACKDONE : StepStatus.ROLLEBACKFAILED)
                 .buildRemark(remark);
         this.updateStep(stepBuild.build());
+
+        if (this.transactionProperties.isWriteLogs()) {
+            this.logsDao.save(DTXLogsBuild.getInstance().buildCommon(step.getSessionId(), DTXLogsType.Step, step.getId(), stepBuild.getLogsContentBuild().build()).build());
+        }
 
         return success;
     }
@@ -434,7 +497,7 @@ public class DefaultDTransactionManager implements IDTransactionManager {
     private StepTree constructStepTree(List<DTXStep> steps) {
         List<StepTree> list = new ArrayList<>();
 
-        DTXStep rt = new DTXStepBuild().buildId(DTransactionUtil.DEFAULT_PARENT_STEP_ID).build();
+        DTXStep rt = DTXStepBuild.getInstance().buildId(DTransactionUtil.DEFAULT_PARENT_STEP_ID).build();
         StepTree root = new StepTree(rt);
 
         Map<Long, List<DTXStep>> temp = new HashMap<>();

@@ -8,7 +8,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 @Entity
-@Table(name = "dtx_step")
+@Table(name = "dtx_step", indexes = {@Index(columnList = "session_id")})
 public class DTXStep implements Serializable {
 
     @Id

@@ -42,6 +42,11 @@ public class DTransactionProperties {
      */
     private List<StepStatus> allowRollbackStepStatus = new ArrayList<>();
 
+    /**
+     * 是否记录明细日志，默认为true
+     */
+    private boolean writeLogs = true;
+
     public int getStepRetrySize() {
         return stepRetrySize;
     }
@@ -72,5 +77,13 @@ public class DTransactionProperties {
 
     public void setAllowRollbackStepStatus(List<StepStatus> allowRollbackStepStatus) {
         this.allowRollbackStepStatus = allowRollbackStepStatus;
+    }
+
+    public boolean isWriteLogs() {
+        return writeLogs;
+    }
+
+    public void setWriteLogs(boolean writeLogs) {
+        this.writeLogs = writeLogs;
     }
 }

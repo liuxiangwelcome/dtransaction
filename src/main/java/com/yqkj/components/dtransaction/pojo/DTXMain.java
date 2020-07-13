@@ -7,7 +7,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 @Entity
-@Table(name = "dtx_main")
+@Table(name = "dtx_main", uniqueConstraints = @UniqueConstraint(columnNames = "session_id"))
 public class DTXMain implements Serializable {
 
     @Id
